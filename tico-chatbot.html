@@ -1,0 +1,675 @@
+<title>Tico, assistente do DP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: intranet bar + chat (main column) + painel lateral (lembretes, FAQ, impacto). Assinatura: carimbo de horário do relógio de ponto em cada mensagem. */
+:root {
+  --bg: #EDF1F3;
+  --surface: #FFFFFF;
+  --surface-2: #F6F9FA;
+  --ink: #14232B;
+  --muted: #586A72;
+  --line: #D3DCE0;
+  --accent: #0D7A69;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DCEFEA;
+  --stamp: #B93F0B;
+  --stamp-soft: #FBE7DA;
+  --ok: #157A3A;
+  --ok-soft: #DDF1E3;
+  --warn: #9A5B07;
+  --warn-soft: #FBEFD6;
+  --user: #14232B;
+  --user-ink: #F2F6F7;
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --r: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E181D; --surface: #15232A; --surface-2: #1A2B33; --ink: #E2EBEE; --muted: #93A5AD; --line: #283A42;
+    --accent: #3EC3AB; --accent-ink: #062520; --accent-soft: #133A35; --stamp: #F08A55; --stamp-soft: #3B2318;
+    --ok: #5AD58A; --ok-soft: #173525; --warn: #F2B544; --warn-soft: #3A2E14; --user: #2A3E47; --user-ink: #EAF1F3;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E181D; --surface: #15232A; --surface-2: #1A2B33; --ink: #E2EBEE; --muted: #93A5AD; --line: #283A42;
+  --accent: #3EC3AB; --accent-ink: #062520; --accent-soft: #133A35; --stamp: #F08A55; --stamp-soft: #3B2318;
+  --ok: #5AD58A; --ok-soft: #173525; --warn: #F2B544; --warn-soft: #3A2E14; --user: #2A3E47; --user-ink: #EAF1F3;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.topbar-in { max-width: 1240px; margin: 0 auto; padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brand b { font-family: var(--f-display); font-size: 1.15rem; letter-spacing: -0.01em; }
+.brand span { color: var(--muted); font-size: 0.85rem; }
+.clock { margin-left: auto; font-family: var(--f-mono); font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; border: 1px dashed var(--line); border-radius: 6px; padding: 4px 10px; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+
+/* Chat */
+.chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; height: clamp(540px, calc(100dvh - 120px), 860px); min-width: 0; }
+.chat-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.avatar { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font-family: var(--f-display); font-weight: 700; font-size: 1.15rem; box-shadow: inset 0 0 0 3px var(--surface), 0 0 0 2px var(--accent); }
+.chat-head h1 { margin: 0; font-family: var(--f-display); font-size: 1.1rem; line-height: 1.2; }
+.chat-head p { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.online { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: middle; }
+
+.log { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+.msg { display: flex; flex-direction: column; gap: 4px; max-width: min(620px, 92%); }
+.msg.bot { align-self: flex-start; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.bubble { padding: 10px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.bot .bubble { border-top-left-radius: 4px; }
+.user .bubble { background: var(--user); color: var(--user-ink); border-color: transparent; border-top-right-radius: 4px; }
+.bubble p { margin: 0; }
+.bubble p + p, .bubble p + ul, .bubble ul + p { margin-top: 8px; }
+.bubble ul { margin: 6px 0 0; padding-left: 18px; }
+.bubble li + li { margin-top: 4px; }
+.bubble strong { font-weight: 600; }
+.stampline { font-family: var(--f-mono); font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.note { display: inline-block; margin-top: 8px; font-size: 0.78rem; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 2px 8px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 100%; }
+.chip { border: 1px solid var(--accent); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 0.88rem; font-weight: 500; }
+.chip:hover { background: var(--accent-soft); }
+.chip.menu { border-color: var(--line); color: var(--muted); }
+.typing { align-self: flex-start; display: flex; gap: 4px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; border-top-left-radius: 4px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+.composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+.composer input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 10px 16px; }
+.composer button { border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+
+/* Widgets dentro do chat */
+.widget { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.widget-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
+.widget-head b { color: var(--ink); font-weight: 600; }
+.scroll-x { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+td.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:hover td, tr.click:focus-visible td { background: var(--accent-soft); }
+tr.click td:first-child::after { content: " ›"; color: var(--accent); }
+tfoot td { font-weight: 600; border-bottom: 0; }
+.liquido td { background: var(--accent-soft); color: var(--ink); }
+.pill { display: inline-block; font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--stamp-soft); color: var(--stamp); }
+.pill.wait { background: var(--warn-soft); color: var(--warn); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+.legend { display: grid; gap: 6px; padding: 10px 12px; font-size: 0.84rem; }
+.legend div { display: flex; gap: 8px; align-items: baseline; }
+
+.tl { list-style: none; margin: 0; padding: 12px; display: grid; gap: 0; }
+.tl li { display: grid; grid-template-columns: 64px 1fr; gap: 12px; position: relative; padding-bottom: 14px; }
+.tl li:last-child { padding-bottom: 0; }
+.tl .when { font-family: var(--f-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--muted); padding-top: 1px; }
+.tl .what { border-left: 2px solid var(--line); padding-left: 12px; }
+.tl .what b { display: block; font-weight: 600; }
+.tl .what span { font-size: 0.84rem; color: var(--muted); }
+.tl li.next .when { color: var(--stamp); font-weight: 500; }
+.tl li.next .what { border-left-color: var(--stamp); }
+.tl li.done .what b, .tl li.done .when { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+
+.form { display: grid; gap: 10px; padding: 12px; }
+.form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); min-width: 0; }
+.form input, .form select, .form textarea { width: 100%; border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; color: var(--ink); }
+.form textarea { resize: vertical; min-height: 60px; }
+.btn { justify-self: start; border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.summary { margin: 0; padding: 12px; font-family: var(--f-mono); font-size: 0.8rem; white-space: pre-wrap; background: var(--surface-2); border-top: 1px dashed var(--line); user-select: all; }
+.summary-actions { display: flex; gap: 8px; align-items: center; padding: 0 12px 12px; background: var(--surface-2); flex-wrap: wrap; }
+.summary-actions small { color: var(--muted); }
+
+/* Painel lateral */
+.side { display: grid; gap: 16px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel h2 { margin: 0; font-family: var(--f-display); font-size: 1rem; line-height: 1.25; text-wrap: balance; }
+.eyebrow { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.reminder { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: var(--stamp-soft); }
+.reminder.soft { background: var(--warn-soft); }
+.reminder p { margin: 0; font-size: 0.9rem; }
+.reminder .stampline { color: var(--stamp); }
+.reminder.soft .stampline { color: var(--warn); }
+.reminder button { justify-self: start; border: 0; background: var(--surface); color: var(--ink); border-radius: 6px; padding: 5px 12px; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+.faq { list-style: none; margin: 0; padding: 0; display: grid; }
+.faq li + li { border-top: 1px solid var(--line); }
+.faq button { width: 100%; display: grid; grid-template-columns: 26px 1fr; gap: 8px; text-align: left; background: none; border: 0; padding: 8px 0; cursor: pointer; font-size: 0.9rem; }
+.faq button:hover span:last-child { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.faq .n { font-family: var(--f-mono); font-size: 0.78rem; color: var(--muted); padding-top: 2px; font-variant-numeric: tabular-nums; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kpi { display: grid; gap: 2px; }
+.kpi b { font-family: var(--f-display); font-size: 1.35rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 0.74rem; color: var(--muted); line-height: 1.3; }
+.bars { display: grid; gap: 8px; }
+.bar { display: grid; grid-template-columns: 1fr 40px; gap: 4px 8px; font-size: 0.82rem; align-items: center; }
+.bar .track { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); }
+.bar .pct { text-align: right; font-family: var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tag-sim { justify-self: start; font-size: 0.72rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 1px 8px; }
+.foot { grid-column: 1 / -1; font-size: 0.78rem; color: var(--muted); text-align: center; }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); }
+  .chat { height: min(82dvh, 760px); }
+  .clock { margin-left: 0; }
+}
+@media (max-width: 480px) {
+  .form .row { grid-template-columns: 1fr; }
+  .msg { max-width: 100%; }
+  .log { padding: 14px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log { scroll-behavior: auto; }
+  .typing i { animation: none; opacity: .6; }
+}
+</style>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand"><b>Intranet</b><span>Campanha RH sem Mistérios · Ponto e folha</span></div>
+    <div class="clock" id="clock" aria-label="Data e hora atuais">--/--/---- · --:--:--</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="chat" aria-label="Conversa com o Tico">
+    <div class="chat-head">
+      <div class="avatar" aria-hidden="true">T</div>
+      <div>
+        <h1>Tico, o assistente do DP</h1>
+        <p><span class="online" aria-hidden="true"></span>Responde dúvidas de ponto e holerite na hora, 24 h por dia</p>
+      </div>
+    </div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <form class="composer" id="composer" autocomplete="off">
+      <label for="msg" class="sr" hidden>Sua pergunta</label>
+      <input id="msg" type="text" placeholder="Escreva sua dúvida. Ex.: esqueci de bater a saída" aria-label="Sua pergunta">
+      <button type="submit">Enviar</button>
+    </form>
+  </section>
+
+  <aside class="side">
+    <section class="panel" aria-labelledby="h-lemb">
+      <div class="eyebrow">Lembretes do Tico</div>
+      <h2 id="h-lemb">Para você resolver hoje</h2>
+      <div class="reminder" id="rem1"></div>
+      <div class="reminder soft" id="rem2"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-faq">
+      <div class="eyebrow">Top 10 do mês</div>
+      <h2 id="h-faq">Perguntas que o RH nunca mais quer responder</h2>
+      <ol class="faq" id="faq"></ol>
+    </section>
+
+    <section class="panel" aria-labelledby="h-imp">
+      <div class="eyebrow">Painel do DP</div>
+      <h2 id="h-imp">O que o Tico resolveu este mês</h2>
+      <div class="kpis">
+        <div class="kpi"><b>412</b><span>dúvidas respondidas</span></div>
+        <div class="kpi"><b>86%</b><span>sem abrir chamado</span></div>
+        <div class="kpi"><b>58</b><span>ajustes antes do prazo</span></div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <span class="tag-sim">Dados simulados para a apresentação</span>
+    </section>
+  </aside>
+
+  <p class="foot">Protótipo da campanha Eureka. Regras de exemplo baseadas na CLT; nomes, canais e prazos são fictícios e devem ser ajustados à política da empresa e à convenção coletiva.</p>
+</main>
+
+<script>
+/* ===== Configuração: troque aqui nomes, canais e prazos da empresa ===== */
+const CONFIG = {
+  app: "Ponto Fácil",
+  portal: "Portal do Colaborador",
+  gestor: "seu gestor",
+  emailDP: "dp@empresa.com.br",
+  ramalBeneficios: "2040",
+  prazoAtestadoHoras: 48,
+  respostaDP: "2 dias úteis",
+  diaFechamentoPonto: 25,
+  diaAprovacaoGestor: 27,
+  diaFechamentoFolha: 30
+};
+
+/* ===== Datas ===== */
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const pad = n => String(n).padStart(2, "0");
+const ddmm = d => pad(d.getDate()) + "/" + pad(d.getMonth() + 1);
+const hhmm = d => pad(d.getHours()) + ":" + pad(d.getMinutes());
+const today = new Date(); today.setHours(0, 0, 0, 0);
+function lastBusinessDay(from) { const d = new Date(from); do { d.setDate(d.getDate() - 1); } while (d.getDay() === 0 || d.getDay() === 6); return d; }
+const ontem = lastBusinessDay(today);
+const iso = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+function cycle() {
+  const base = new Date(today.getFullYear(), today.getMonth() + (today.getDate() > CONFIG.diaFechamentoPonto ? 1 : 0), 1);
+  const y = base.getFullYear(), m = base.getMonth();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const at = day => new Date(y, m, Math.min(day, lastDay));
+  // 5º dia útil do mês seguinte: sábado conta como dia útil, domingo não (feriados não considerados aqui)
+  const pay = new Date(y, m + 1, 1); let count = 0;
+  while (true) { if (pay.getDay() !== 0) { count++; if (count === 5) break; } pay.setDate(pay.getDate() + 1); }
+  return { mes: MESES[m], ponto: at(CONFIG.diaFechamentoPonto), gestor: at(CONFIG.diaAprovacaoGestor), folha: at(CONFIG.diaFechamentoFolha), pagamento: pay };
+}
+const C = cycle();
+const diasAteFechamento = Math.round((C.ponto - today) / 86400000);
+
+/* ===== Holerite de exemplo ===== */
+const HOLERITE = [
+  { k: "base", d: "Salário base", ref: "30 d", p: "3.200,00" },
+  { k: "he", d: "Hora extra 50%", ref: "6 h", p: "130,91" },
+  { k: "noturno", d: "Adicional noturno 20%", ref: "4 h", p: "11,64" },
+  { k: "dsrhe", d: "DSR s/ horas extras", ref: "", p: "26,18" },
+  { k: "inss", d: "INSS", ref: "tabela", x: "272,06" },
+  { k: "irrf", d: "IRRF", ref: "isento", x: "0,00" },
+  { k: "vt", d: "Vale-transporte", ref: "6%", x: "192,00" },
+  { k: "falta", d: "Falta injustificada", ref: "1 d", x: "106,67" },
+  { k: "dsr", d: "DSR descontado", ref: "1 d", x: "106,67" }
+];
+const LINHAS = {
+  base: ["Salário base", "É o valor do seu contrato para o mês cheio. Os outros valores são calculados a partir dele."],
+  he: ["Hora extra 50%", "São 6 horas trabalhadas além da jornada, pagas com 50% a mais. O valor da hora é o salário dividido por 220 (horas do mês). Aqui: R$ 14,55 × 1,5 × 6 h."],
+  noturno: ["Adicional noturno", "Você trabalhou 4 horas entre 22h e 5h. Elas valem pelo menos 20% a mais que a hora do dia."],
+  dsrhe: ["DSR sobre horas extras", "Quem faz hora extra também recebe o reflexo dela no descanso semanal remunerado (DSR), que é o dia de folga pago da semana."],
+  inss: ["INSS", "É a contribuição para a Previdência Social, que garante aposentadoria, auxílio-doença e licença-maternidade. As alíquotas são progressivas, de 7,5% a 14%, aplicadas por faixa de salário até o teto."],
+  irrf: ["IRRF", "É o Imposto de Renda retido na fonte, calculado pela tabela da Receita Federal sobre o salário menos INSS e dependentes. Neste exemplo ficou zerado porque a renda está na faixa de isenção."],
+  vt: ["Vale-transporte", "A lei permite descontar até 6% do salário base. Se o vale custar menos que isso, a empresa desconta só o custo dele. Se você não usa, pode pedir para cancelar."],
+  falta: ["Falta injustificada", "Uma falta sem justificativa desconta 1 dia de salário (salário ÷ 30). Com atestado ou outro motivo previsto em lei, não há desconto."],
+  dsr: ["DSR descontado", "A falta sem justificativa fez perder o descanso remunerado daquela semana, por isso saiu mais 1 dia. Com atestado entregue no prazo, isso não acontece."],
+  fgts: ["FGTS", "São 8% depositados pela empresa na sua conta do FGTS, na Caixa. Esse valor não sai do seu salário: aparece no holerite só para você conferir."]
+};
+
+/* ===== Conteúdo das respostas ===== */
+const MENU = [
+  ["Como bato o ponto?", "comoBater"],
+  ["Esqueci / marquei errado", "esqueci"],
+  ["Atrasos, faltas, HE e banco", "regras"],
+  ["Entender meu holerite", "holerite"],
+  ["Corrigir algo / falar com alguém", "contato"],
+  ["Prazos do fechamento", "prazos"]
+];
+const VOLTAR = ["Voltar ao menu", "inicio", "menu"];
+const visited = [];
+
+const NODES = {
+  inicio: () => ({
+    say: [`<p>Oi! Eu sou o <strong>Tico</strong>, o assistente do DP.</p><p>Respondo suas dúvidas de ponto e holerite na hora. Escolha um assunto ou escreva sua pergunta aqui embaixo.</p>`],
+    chips: MENU
+  }),
+  comoBater: () => ({
+    topic: "Como bater o ponto",
+    say: [
+      `<p>São <strong>4 marcações por dia</strong>: entrada, saída para o almoço, volta do almoço e saída.</p><p>Você pode registrar de 3 jeitos:</p><ul><li><strong>App ${CONFIG.app}</strong> no celular, com a localização ligada</li><li><strong>Relógio de ponto</strong> na recepção, com crachá ou digital</li><li><strong>Web</strong>, pelo ${CONFIG.portal}, no computador</li></ul><p>Depois de cada registro aparece um comprovante. Guarde-o se precisar contestar alguma marcação.</p>`,
+      { widget: wEspelho }
+    ],
+    chips: [["Esqueci uma marcação", "esqueci"], ["Quanto posso atrasar?", "atraso"], ["Prazos do fechamento", "prazos"], VOLTAR]
+  }),
+  esqueci: () => ({
+    topic: "Esqueci / marquei errado",
+    say: [`<p>Acontece! O que houve?</p>`],
+    chips: [["Esqueci a entrada", "ajuste", "entrada"], ["Esqueci a saída", "ajuste", "saida"], ["Marquei duas vezes", "ajuste", "duplicada"], ["Marquei no horário errado", "ajuste", "errado"], VOLTAR]
+  }),
+  ajuste: (tipo) => {
+    const textos = {
+      entrada: "Sem a entrada, o dia aparece como <strong>Incompleto</strong> e pode virar desconto.",
+      saida: "Sem a saída, o dia aparece como <strong>Incompleto</strong> e as horas trabalhadas não são contadas.",
+      duplicada: "Marcação repetida confunde o cálculo das horas. É só pedir para desconsiderar a extra.",
+      errado: "Dá para corrigir: informe o horário real em que você entrou ou saiu."
+    };
+    return {
+      topic: "Pedido de ajuste de ponto",
+      say: [
+        `<p>${textos[tipo] || textos.saida}</p><p>Peça o ajuste no <strong>${CONFIG.portal} › Meu ponto › Solicitar ajuste</strong>, com o horário real e o motivo. ${cap(CONFIG.gestor)} aprova e o DP corrige.</p><p>Faça isso até <strong>${ddmm(C.ponto)}</strong> para entrar na folha deste mês. Já deixei o pedido preenchido aqui:</p>`,
+        { widget: () => wAjuste(tipo) }
+      ],
+      chips: [["Prazos do fechamento", "prazos"], VOLTAR]
+    };
+  },
+  regras: () => ({
+    say: [`<p>Sobre qual regra você quer saber?</p>`],
+    chips: [["Atrasos e tolerância", "atraso"], ["Faltas e atestados", "faltas"], ["Hora extra", "horaExtra"], ["Banco de horas", "banco"], ["Adicional noturno", "noturno"], VOLTAR]
+  }),
+  atraso: () => ({
+    topic: "Atrasos e tolerância",
+    say: [`<p>Pela CLT, atrasos ou saídas de até <strong>5 minutos por marcação</strong>, somando no máximo <strong>10 minutos no dia</strong>, não são descontados nem viram hora extra.</p><p>Passou disso, o tempo todo conta: o atraso vira desconto ou débito no banco de horas. Atrasos sem justificativa também podem tirar o DSR da semana, conforme a política da empresa.</p><p>Atrasou por um imprevisto? Avise ${CONFIG.gestor} no mesmo dia e anexe o comprovante no pedido de ajuste.</p><span class="note">Exemplo: ajustar à política da empresa</span>`],
+    chips: [["Faltas e atestados", "faltas"], ["Banco de horas", "banco"], VOLTAR]
+  }),
+  faltas: () => ({
+    topic: "Faltas e atestados",
+    say: [`<p>Falta justificada <strong>não é descontada</strong>. As mais comuns:</p><ul><li><strong>Atestado médico</strong>: envie pelo app em até ${CONFIG.prazoAtestadoHoras} h</li><li><strong>Casamento</strong>: 3 dias seguidos</li><li><strong>Falecimento</strong> de cônjuge, pais, filhos, irmãos ou dependente: 2 dias</li><li><strong>Nascimento de filho</strong>: 5 dias de licença-paternidade</li><li><strong>Doação de sangue</strong>: 1 dia a cada 12 meses</li></ul><p>Falta sem justificativa desconta o dia e também o <strong>DSR</strong> da semana (o descanso remunerado).</p><span class="note">Base: CLT art. 473. Convenções coletivas podem dar mais dias.</span>`],
+    chips: [["O que é DSR?", "linha", "dsr"], ["Corrigir algo / falar com alguém", "contato"], VOLTAR]
+  }),
+  horaExtra: () => ({
+    topic: "Hora extra",
+    say: [`<p>Hora extra é o tempo trabalhado além da sua jornada. Ela precisa ser <strong>autorizada por ${CONFIG.gestor} antes</strong>.</p><ul><li><strong>Dias úteis</strong>: no mínimo 50% a mais sobre a hora normal</li><li><strong>Domingos e feriados</strong> sem folga compensatória: em geral 100%, conforme a convenção coletiva</li><li><strong>Limite</strong>: até 2 horas extras por dia</li></ul><p>Se a empresa usa banco de horas, a hora extra pode virar folga em vez de pagamento.</p>`],
+    chips: [["Banco de horas", "banco"], ["Ver no holerite", "holerite"], VOLTAR]
+  }),
+  banco: () => ({
+    topic: "Banco de horas",
+    say: [`<p>No banco de horas, o tempo a mais vira <strong>crédito</strong> e o tempo a menos vira <strong>débito</strong>.</p><ul><li>Com acordo individual escrito: compensar em até <strong>6 meses</strong></li><li>Com acordo ou convenção coletiva: em até <strong>1 ano</strong></li><li>Crédito não compensado no prazo é pago como hora extra</li></ul><p>Seu saldo fica no <strong>${CONFIG.portal} › Meu ponto › Banco de horas</strong>. Combine as folgas com ${CONFIG.gestor}.</p>`],
+    chips: [["Hora extra", "horaExtra"], ["Prazos do fechamento", "prazos"], VOLTAR]
+  }),
+  noturno: () => ({
+    topic: "Adicional noturno",
+    say: [`<p>Trabalho entre <strong>22h e 5h</strong> recebe adicional de pelo menos <strong>20%</strong>.</p><p>E a hora noturna é mais curta: cada <strong>52 min 30 s</strong> contam como 1 hora. Por isso, 7 horas no relógio à noite viram 8 horas pagas.</p>`],
+    chips: [["Ver no holerite", "holerite"], VOLTAR]
+  }),
+  holerite: () => ({
+    topic: "Entender o holerite",
+    say: [`<p>Este é um holerite de exemplo. <strong>Toque em qualquer linha</strong> que eu explico o que ela significa.</p>`, { widget: wHolerite }],
+    chips: [["Por que o líquido é menor?", "liquido"], ["Quando cai o pagamento?", "prazos"], VOLTAR]
+  }),
+  linha: (k) => ({
+    topic: "Holerite: " + LINHAS[k][0],
+    say: [`<p><strong>${LINHAS[k][0]}</strong>: ${LINHAS[k][1]}</p>`],
+    chips: [["Ver o holerite", "holerite"], ["Por que o líquido é menor?", "liquido"], VOLTAR]
+  }),
+  liquido: () => ({
+    topic: "Por que o líquido é menor",
+    say: [`<p>O líquido é o total que você ganhou (proventos) menos os descontos.</p><p>No exemplo: <span class="stampline">R$ 3.368,73 − R$ 677,40 = R$ 2.691,33</span></p><p>Os maiores descontos foram o <strong>INSS</strong>, o <strong>vale-transporte</strong> e a <strong>falta com DSR</strong>. Se algum desconto não fizer sentido para você, fale com o DP.</p>`],
+    chips: [["Ver o holerite", "holerite"], ["Abrir chamado no DP", "encaminhar"], VOLTAR]
+  }),
+  contato: () => ({
+    topic: "Falar com alguém",
+    say: [`<p>Quem procurar em cada caso:</p><ul><li><strong>Ajuste de ponto</strong>: você pede no ${CONFIG.portal} e ${CONFIG.gestor} aprova</li><li><strong>Erro no holerite ou desconto estranho</strong>: DP, pelo e-mail <span class="stampline">${CONFIG.emailDP}</span>. Resposta em até ${CONFIG.respostaDP}</li><li><strong>Vale-transporte, plano de saúde e benefícios</strong>: Benefícios, ramal <span class="stampline">${CONFIG.ramalBeneficios}</span></li><li><strong>Atestados</strong>: pelo app ${CONFIG.app}, em até ${CONFIG.prazoAtestadoHoras} h</li></ul><p>Quer que eu monte um chamado para o DP com sua dúvida já resumida?</p>`],
+    chips: [["Abrir chamado no DP", "encaminhar"], VOLTAR]
+  }),
+  encaminhar: (texto) => ({
+    topic: "Chamado no DP",
+    say: [`<p>Preencha e eu monto o chamado. Ele vai com o resumo do que você já consultou aqui, então o DP não precisa perguntar de novo.</p>`, { widget: () => wChamado(texto) }],
+    chips: [VOLTAR]
+  }),
+  prazos: () => ({
+    topic: "Prazos do fechamento",
+    say: [`<p>Este é o calendário de fechamento de <strong>${C.mes}</strong>:</p>`, { widget: wPrazos }, `<p>Ajustes e horas extras pedidos depois de <strong>${ddmm(C.ponto)}</strong> entram só na folha do mês seguinte.</p>`],
+    chips: [["Esqueci uma marcação", "esqueci"], VOLTAR]
+  }),
+  fallback: (texto) => ({
+    say: [`<p>Ainda não sei responder isso. Posso mandar sua pergunta para o DP já resumida, assim ninguém precisa perguntar de novo.</p>`],
+    chips: [["Abrir chamado no DP", "encaminhar", texto], VOLTAR]
+  })
+};
+
+/* ===== Palavras-chave do campo livre (a ordem importa) ===== */
+const KEYWORDS = [
+  [["esqueci", "esquec", "nao bati", "sem marcacao", "marquei errado", "marcacao errada", "duplicad", "duas vezes", "ajuste", "corrigir o ponto", "corrigir ponto"], "esqueci"],
+  [["ate quando", "prazo", "fechamento", "quando cai", "dia do pagamento", "quando recebo"], "prazos"],
+  [["tolerancia", "atras", "minutos"], "atraso"],
+  [["atestado", "falta", "faltei", "medico", "casamento", "falecimento", "licenca", "doacao"], "faltas"],
+  [["banco de horas", "banco", "saldo", "folga", "compensar"], "banco"],
+  [["hora extra", "horas extras", "extra", "domingo", "feriado"], "horaExtra"],
+  [["noturn", "madrugada"], "noturno"],
+  [["inss", "previdencia"], "linha", "inss"],
+  [["irrf", "imposto", "renda"], "linha", "irrf"],
+  [["vale transporte", "vale-transporte", "vt", "transporte"], "linha", "vt"],
+  [["fgts"], "linha", "fgts"],
+  [["dsr", "descanso"], "linha", "dsr"],
+  [["menor", "liquido", "veio menos", "desconto", "descontou"], "liquido"],
+  [["holerite", "contracheque", "salario", "folha"], "holerite"],
+  [["pagamento", "pagam", "receber"], "prazos"],
+  [["bater", "bate", "registrar", "registro", "marcar", "ponto", "app", "relogio", "espelho"], "comoBater"],
+  [["falar", "humano", "atendente", "pessoa", "contato", "quem", "chamado", "dp", "rh", "email"], "contato"],
+  [["oi", "ola", "menu", "inicio", "bom dia", "boa tarde", "boa noite", "ajuda"], "inicio"]
+];
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function matchText(text) {
+  const t = norm(text), tokens = t.split(/[^a-z0-9-]+/).filter(Boolean);
+  for (const [keys, id, arg] of KEYWORDS) {
+    if (keys.some(k => k.includes(" ") ? t.includes(k) : tokens.some(w => w.startsWith(k)))) return [id, arg];
+  }
+  return ["fallback", text];
+}
+
+/* ===== Motor do chat ===== */
+const log = document.getElementById("log");
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let queue = Promise.resolve();
+const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function scrollDown() { log.scrollTop = log.scrollHeight; }
+function addMsg(who, content) {
+  const m = document.createElement("div"); m.className = "msg " + who;
+  const b = document.createElement("div"); b.className = who === "bot" && typeof content !== "string" ? "" : "bubble";
+  if (typeof content === "string") b.innerHTML = content; else b.appendChild(content);
+  const s = document.createElement("div"); s.className = "stampline";
+  s.textContent = (who === "bot" ? "Tico" : "Você") + " · " + hhmm(new Date());
+  m.append(b, s); log.appendChild(m); scrollDown();
+}
+function addChips(chips) {
+  const box = document.createElement("div"); box.className = "chips";
+  chips.forEach(([label, id, arg]) => {
+    const c = document.createElement("button"); c.type = "button"; c.className = "chip" + (arg === "menu" ? " menu" : ""); c.textContent = label;
+    c.addEventListener("click", () => { box.remove(); ask(label, id, arg === "menu" ? undefined : arg); });
+    box.appendChild(c);
+  });
+  log.appendChild(box); scrollDown();
+}
+function clearChips() { log.querySelectorAll(".chips").forEach(c => c.remove()); }
+function run(id, arg) {
+  const node = NODES[id](arg);
+  if (node.topic && !visited.includes(node.topic)) visited.push(node.topic);
+  queue = queue.then(async () => {
+    for (const item of node.say) {
+      const t = document.createElement("div"); t.className = "typing"; t.innerHTML = "<i></i><i></i><i></i>"; t.setAttribute("aria-label", "Tico está digitando");
+      log.appendChild(t); scrollDown(); await wait(420); t.remove();
+      addMsg("bot", typeof item === "string" ? item : item.widget());
+    }
+    if (node.chips) addChips(node.chips);
+  });
+}
+function ask(label, id, arg) { clearChips(); addMsg("user", esc(label)); run(id, arg); }
+
+document.getElementById("composer").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = document.getElementById("msg"); const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  const [id, arg] = matchText(text);
+  ask(text, id, arg);
+});
+
+/* ===== Widgets ===== */
+function el(html) { const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstElementChild; }
+
+function wEspelho() {
+  return el(`<div class="widget">
+    <div class="widget-head"><b>Espelho de ponto · exemplo</b><span>Confira toda sexta</span></div>
+    <div class="scroll-x"><table>
+      <thead><tr><th>Dia</th><th class="num">Entrada</th><th class="num">Almoço</th><th class="num">Volta</th><th class="num">Saída</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Qui 13</td><td class="num">08:02</td><td class="num">12:00</td><td class="num">13:01</td><td class="num">17:05</td><td><span class="pill ok">OK</span></td></tr>
+        <tr><td class="mono">Sex 14</td><td class="num">07:58</td><td class="num">12:03</td><td class="num">13:00</td><td class="num">--:--</td><td><span class="pill bad">Incompleto</span></td></tr>
+        <tr><td class="mono">Seg 17</td><td class="num">08:15</td><td class="num">12:00</td><td class="num">13:00</td><td class="num">17:30</td><td><span class="pill wait">Ajuste pendente</span></td></tr>
+        <tr><td class="mono">Ter 18</td><td class="num">--:--</td><td class="num">--:--</td><td class="num">--:--</td><td class="num">--:--</td><td><span class="pill info">Abonado</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="legend">
+      <div><span class="pill ok">OK</span><span>As 4 marcações foram registradas.</span></div>
+      <div><span class="pill bad">Incompleto</span><span>Falta uma marcação. Peça ajuste.</span></div>
+      <div><span class="pill wait">Ajuste pendente</span><span>Seu pedido está com o gestor.</span></div>
+      <div><span class="pill info">Abonado</span><span>Falta justificada aceita, sem desconto.</span></div>
+    </div>
+  </div>`);
+}
+
+function wHolerite() {
+  const rows = HOLERITE.map(r => `<tr class="click" tabindex="0" role="button" data-k="${r.k}"><td>${r.d}</td><td class="mono">${r.ref}</td><td class="num">${r.p || ""}</td><td class="num">${r.x || ""}</td></tr>`).join("");
+  const w = el(`<div class="widget">
+    <div class="widget-head"><b>Holerite · exemplo</b><span>Valores ilustrativos</span></div>
+    <div class="scroll-x"><table>
+      <thead><tr><th>Descrição</th><th>Ref.</th><th class="num">Proventos</th><th class="num">Descontos</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr><td>Totais</td><td></td><td class="num">3.368,73</td><td class="num">677,40</td></tr>
+        <tr class="liquido"><td>Líquido a receber</td><td></td><td class="num" colspan="2">R$ 2.691,33</td></tr>
+        <tr class="click" tabindex="0" role="button" data-k="fgts"><td>FGTS do mês (informativo)</td><td class="mono">8%</td><td class="num" colspan="2">252,43</td></tr>
+      </tfoot>
+    </table></div>
+  </div>`);
+  w.querySelectorAll("tr.click").forEach(tr => {
+    const go = () => ask("O que é " + LINHAS[tr.dataset.k][0] + "?", "linha", tr.dataset.k);
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+  return w;
+}
+
+let protocolo = 4817;
+function wAjuste(tipo) {
+  const hora = { entrada: "08:00", saida: "17:00", duplicada: "12:00", errado: "08:00" }[tipo] || "17:00";
+  const motivo = { entrada: "Esqueci de registrar a entrada no app.", saida: "Esqueci de registrar a saída no app.", duplicada: "Registrei a volta do almoço duas vezes.", errado: "O horário registrado não corresponde ao real." }[tipo] || "";
+  const opt = (v, t) => `<option value="${v}"${v === tipo ? " selected" : ""}>${t}</option>`;
+  const n = protocolo++;
+  const w = el(`<div class="widget">
+    <div class="widget-head"><b>Solicitar ajuste de ponto</b><span>Simulação</span></div>
+    <form class="form" id="aj-${n}">
+      <div class="row">
+        <label for="aj-data-${n}">Dia<input id="aj-data-${n}" type="date" value="${iso(ontem)}" required></label>
+        <label for="aj-hora-${n}">Horário real<input id="aj-hora-${n}" type="time" value="${hora}" required></label>
+      </div>
+      <label for="aj-tipo-${n}">O que aconteceu<select id="aj-tipo-${n}">${opt("entrada", "Esqueci a entrada")}${opt("saida", "Esqueci a saída")}${opt("duplicada", "Marcação duplicada")}${opt("errado", "Horário errado")}</select></label>
+      <label for="aj-mot-${n}">Motivo<textarea id="aj-mot-${n}">${motivo}</textarea></label>
+      <button class="btn" type="submit">Enviar para o gestor</button>
+    </form>
+  </div>`);
+  const f = w.querySelector("form");
+  f.addEventListener("submit", e => {
+    e.preventDefault();
+    const d = new Date(f.querySelector("input[type=date]").value + "T12:00:00");
+    const h = f.querySelector("input[type=time]").value;
+    const tipoTxt = f.querySelector("select").selectedOptions[0].textContent.toLowerCase();
+    f.querySelectorAll("input, select, textarea, button").forEach(x => x.disabled = true);
+    f.querySelector("button").textContent = "Enviado";
+    clearChips();
+    queue = queue.then(async () => {
+      await wait(350);
+      addMsg("bot", `<p>Pedido <span class="stampline">AJ-${n}</span> registrado: ${tipoTxt} em ${ddmm(d)}, às ${h}. <em>(simulação)</em></p><p>Ele foi para ${CONFIG.gestor} aprovar. Você recebe um aviso quando for aprovado e o espelho passa de <span class="pill bad">Incompleto</span> para <span class="pill wait">Ajuste pendente</span>.</p><p>Dica: ligue o lembrete de saída no app ${CONFIG.app} para não esquecer de novo.</p>`);
+      addChips([["Prazos do fechamento", "prazos"], VOLTAR]);
+    });
+  });
+  return w;
+}
+
+function wPrazos() {
+  const steps = [
+    [C.ponto, "Você revisa o espelho e pede ajustes", "Funcionário"],
+    [C.gestor, "Gestor aprova ajustes e horas extras", "Gestor"],
+    [C.folha, "DP calcula e fecha a folha", "Departamento Pessoal"],
+    [C.pagamento, "Salário na conta", "Até o 5º dia útil, como manda a CLT (sábado conta como dia útil)"]
+  ];
+  let nextMarked = false;
+  const items = steps.map(([d, what, who]) => {
+    let cls = "";
+    if (d < today) cls = "done"; else if (!nextMarked) { cls = "next"; nextMarked = true; }
+    return `<li class="${cls}"><span class="when">até ${ddmm(d)}</span><div class="what"><b>${what}</b><span>${who}</span></div></li>`;
+  }).join("");
+  return el(`<div class="widget">
+    <div class="widget-head"><b>Fechamento de ${C.mes}</b><span>Hoje: ${ddmm(today)}</span></div>
+    <ol class="tl">${items}</ol>
+  </div>`);
+}
+
+function wChamado(texto) {
+  const n = 2300 + Math.floor(Math.random() * 600);
+  const w = el(`<div class="widget">
+    <div class="widget-head"><b>Chamado para o DP</b><span>Simulação</span></div>
+    <form class="form">
+      <div class="row">
+        <label for="ch-nome-${n}">Seu nome<input id="ch-nome-${n}" type="text" placeholder="Ex.: Ana Souza" required></label>
+        <label for="ch-setor-${n}">Setor<input id="ch-setor-${n}" type="text" placeholder="Ex.: Expedição" required></label>
+      </div>
+      <label for="ch-duv-${n}">Sua dúvida<textarea id="ch-duv-${n}" required placeholder="Ex.: Veio um desconto de VT maior que no mês passado.">${texto ? esc(texto) : ""}</textarea></label>
+      <button class="btn" type="submit">Montar chamado</button>
+    </form>
+  </div>`);
+  const f = w.querySelector("form");
+  f.addEventListener("submit", e => {
+    e.preventDefault();
+    const [nome, setor] = [...f.querySelectorAll("input")].map(i => i.value.trim());
+    const duv = f.querySelector("textarea").value.trim();
+    const consultas = visited.filter(v => v !== "Chamado no DP");
+    const resumo = `Chamado DP-${n}\nDe: ${nome} · ${setor}\nData: ${ddmm(today)}\nDúvida: ${duv}\nJá consultou no Tico: ${consultas.length ? consultas.join(", ") : "nenhum assunto"}`;
+    f.querySelectorAll("input, textarea, button").forEach(x => x.disabled = true);
+    f.querySelector("button").textContent = "Chamado montado";
+    const pre = document.createElement("pre"); pre.className = "summary"; pre.textContent = resumo;
+    const act = el(`<div class="summary-actions"><button class="btn ghost" type="button">Copiar resumo</button><small></small></div>`);
+    act.querySelector("button").addEventListener("click", () => {
+      const msg = act.querySelector("small");
+      navigator.clipboard.writeText(resumo).then(() => { msg.textContent = "Copiado"; }).catch(() => {
+        const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        msg.textContent = "Texto selecionado. Use Ctrl+C para copiar.";
+      });
+    });
+    w.append(pre, act); scrollDown();
+    clearChips();
+    queue = queue.then(async () => {
+      await wait(350);
+      addMsg("bot", `<p>Pronto! O chamado <span class="stampline">DP-${n}</span> foi aberto <em>(simulação)</em>. O DP responde em até ${CONFIG.respostaDP} no seu e-mail.</p><p>Ele já leva o que você consultou aqui, então ninguém vai precisar perguntar de novo.</p>`);
+      addChips([VOLTAR]);
+    });
+  });
+  return w;
+}
+
+/* ===== Painel lateral ===== */
+const rem1 = document.getElementById("rem1");
+rem1.innerHTML = `<span class="stampline">Saída não registrada · ${ddmm(ontem)}</span><p>Você não registrou a saída do dia ${ddmm(ontem)}.</p><button type="button">Resolver agora</button>`;
+rem1.querySelector("button").addEventListener("click", () => ask("Esqueci de bater a saída do dia " + ddmm(ontem), "ajuste", "saida"));
+
+const rem2 = document.getElementById("rem2");
+const quando = diasAteFechamento === 0 ? "O fechamento do ponto é hoje" : diasAteFechamento === 1 ? "Falta 1 dia para o fechamento do ponto" : `Faltam ${diasAteFechamento} dias para o fechamento do ponto`;
+rem2.innerHTML = `<span class="stampline">Fechamento · ${ddmm(C.ponto)}</span><p>${quando}. Confira seu espelho e peça os ajustes até lá.</p><button type="button">Ver prazos</button>`;
+rem2.querySelector("button").addEventListener("click", () => ask("Quais são os prazos do fechamento?", "prazos"));
+
+const FAQ = [
+  ["Esqueci de bater o ponto, e agora?", "esqueci"],
+  ["Quantos minutos posso atrasar?", "atraso"],
+  ["Por que meu salário veio menor?", "liquido"],
+  ["Atestado abona o dia?", "faltas"],
+  ["Quando cai o pagamento?", "prazos"],
+  ["Como vejo meu banco de horas?", "banco"],
+  ["Hora extra no domingo paga quanto?", "horaExtra"],
+  ["O que é DSR?", "linha", "dsr"],
+  ["Por que desconta vale-transporte?", "linha", "vt"],
+  ["Até quando posso corrigir o ponto?", "prazos"]
+];
+const faq = document.getElementById("faq");
+FAQ.forEach(([q, id, arg], i) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<button type="button"><span class="n">${pad(i + 1)}</span><span>${q}</span></button>`;
+  li.querySelector("button").addEventListener("click", () => ask(q, id, arg));
+  faq.appendChild(li);
+});
+
+const BARS = [["Esqueci a marcação", 31], ["Holerite e descontos", 24], ["Banco de horas", 17], ["Atrasos e faltas", 15], ["Prazos e pagamento", 13]];
+document.getElementById("bars").innerHTML = BARS.map(([t, p]) => `<div class="bar"><span>${t}</span><span class="pct">${p}%</span><div class="track"><div class="fill" style="width:${p}%"></div></div></div>`).join("");
+
+/* ===== Relógio ===== */
+const clock = document.getElementById("clock");
+function tick() { const d = new Date(); clock.textContent = `${ddmm(d)}/${d.getFullYear()} · ${hhmm(d)}:${pad(d.getSeconds())}`; }
+tick(); setInterval(tick, 1000);
+
+/* ===== Início ===== */
+run("inicio");
+</script>
